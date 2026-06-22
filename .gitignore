@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment / secrets — keep these OUT of version control
+.env
+**/.env
+!.env.example
+
+# Build output
+build/
+dist/
+**/build/
+
+# Logs & misc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store

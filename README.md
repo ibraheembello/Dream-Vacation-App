@@ -1,0 +1,249 @@
+# 🌍 Dream Vacation App — Dockerized
+
+A full-stack app for saving dream vacation destinations. A **React** frontend
+talks to a **Node.js/Express** API, which stores data in **PostgreSQL** and
+enriches it with country data from the public [REST Countries](https://restcountries.com) API.
+
+This repository containerizes the whole stack with **Docker** and orchestrates it
+with **Docker Compose** — frontend, backend, and database run as isolated,
+reproducible containers and start with a single command.
+
+---
+
+## 🧱 Architecture
+
+```
+                        Host machine (your browser)
+                                   │
+              ┌────────────────────┼─────────────────────┐
+              │ :3000                                     │ :3001
+              ▼                                           ▼
+   ┌────────────────────┐                      ┌────────────────────┐
+   │   frontend          │                      │   backend          │
+   │   React + nginx     │   REST Countries     │   Node + Express   │
+   │   (static build)    │   (external API) ◄───┤                    │
+   └────────────────────┘                      └─────────┬──────────┘
+                                                          │ db:5432
+                                                          ▼
+                                               ┌────────────────────┐
+                                               │   db                │
+                                               │   PostgreSQL 16     │
+                                               │   volume: db-data   │
+                                               └────────────────────┘
+
+   All three services share the custom bridge network "dvapp-net" and
+   resolve each other by service name (backend → db).
+```
+
+| Service    | Image / Build              | Container port | Host port |
+|------------|----------------------------|----------------|-----------|
+| `frontend` | multi-stage build → nginx  | 80             | `3000`    |
+| `backend`  | `node:18-alpine`           | 3001           | `3001`    |
+| `db`       | `postgres:16-alpine`       | 5432           | *(internal only)* |
+
+---
+
+## 📂 Project structure
+
+```
+Dream-Vacation-App/
+├── backend/
+│   ├── Dockerfile          # Node API image (non-root, prod deps only)
+│   ├── .dockerignore
+│   ├── server.js
+│   └── package.json
+├── frontend/
+│   ├── Dockerfile          # Multi-stage: node build → nginx serve
+│   ├── nginx.conf          # SPA routing + gzip + asset caching
+│   ├── .dockerignore
+│   └── src/ ...
+├── db/
+│   └── init.sql            # Auto-creates the `destinations` table on first boot
+├── docker-compose.yml      # Orchestrates frontend + backend + db
+├── .env.example            # Template for environment variables
+├── .gitignore              # Ignores .env, node_modules, build output
+└── README.md
+```
+
+---
+
+## ✅ Prerequisites
+
+- [Docker Engine](https://docs.docker.com/engine/install/) 20.10+
+- [Docker Compose](https://docs.docker.com/compose/) v2 (bundled with Docker Desktop)
+
+Verify:
+
+```bash
+docker --version
+docker compose version
+```
+
+---
+
+## 🚀 Setup & Run (Runbook)
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/ibraheembello/Dream-Vacation-App.git
+cd Dream-Vacation-App
+```
+
+### 2. Create your environment file
+
+The app reads configuration and secrets from a `.env` file (never committed).
+Copy the template and edit the values:
+
+```bash
+cp .env.example .env
+```
+
+`.env` contents (defaults work out of the box for local use):
+
+```ini
+POSTGRES_USER=dreamuser
+POSTGRES_PASSWORD=change_me_to_a_strong_password
+POSTGRES_DB=dreamvacations
+
+BACKEND_PORT=3001
+COUNTRIES_API_BASE_URL=https://restcountries.com/v3.1
+
+REACT_APP_API_URL=http://localhost:3001
+FRONTEND_PORT=3000
+```
+
+### 3. Build and start everything
+
+```bash
+docker compose up --build
+```
+
+This builds all images and starts the three containers. The backend waits for
+PostgreSQL to be **healthy** before it starts (no race conditions). The
+`destinations` table is created automatically on first launch.
+
+Run detached (in the background) instead:
+
+```bash
+docker compose up --build -d
+```
+
+### 4. Open the app
+
+| What        | URL                                  |
+|-------------|--------------------------------------|
+| Frontend    | http://localhost:3000                |
+| Backend API | http://localhost:3001/api/destinations |
+
+Type a country (e.g. `Japan`), click **Add Destination**, and it appears in the
+list — data is persisted in PostgreSQL.
+
+---
+
+## 🔍 Verify it's working
+
+```bash
+# 1. All three containers are "Up" (db should be "healthy")
+docker compose ps
+
+# 2. Frontend is served by nginx (expect: HTTP/1.1 200 OK)
+curl -I http://localhost:3000
+
+# 3. Backend responds (expect: [] on first run, then JSON rows)
+curl http://localhost:3001/api/destinations
+
+# 4. Create a destination through the API
+curl -X POST http://localhost:3001/api/destinations \
+  -H "Content-Type: application/json" \
+  -d '{"country":"Japan"}'
+
+# 5. Confirm it persisted
+curl http://localhost:3001/api/destinations
+
+# 6. Confirm the table exists inside the db container
+docker compose exec db psql -U dreamuser -d dreamvacations -c "\dt"
+
+# 7. Confirm service-name networking (backend can resolve "db")
+docker compose exec backend getent hosts db
+
+# Tail logs for a specific service
+docker compose logs -f backend
+```
+
+---
+
+## 🔒 Persistence test (volumes work)
+
+Data survives container restarts because PostgreSQL writes to the named
+`db-data` volume:
+
+```bash
+docker compose down      # stop & remove containers (volume is KEPT)
+docker compose up -d     # bring it back
+curl http://localhost:3001/api/destinations   # your data is still there
+```
+
+To wipe the database too, remove the volume:
+
+```bash
+docker compose down -v   # stop containers AND delete the db-data volume
+```
+
+---
+
+## 🧹 Teardown
+
+```bash
+# Stop and remove containers + network (keep data)
+docker compose down
+
+# Stop and remove containers + network + volume (delete data)
+docker compose down -v
+
+# Also remove the images this project built
+docker compose down --rmi local -v
+```
+
+---
+
+## ⚙️ How each requirement is met
+
+| Task requirement                                   | Where / how                                                                 |
+|----------------------------------------------------|------------------------------------------------------------------------------|
+| Frontend multi-stage build, served with nginx      | `frontend/Dockerfile` (node build stage → nginx production stage)            |
+| Backend exposes a port, installs deps, runs server | `backend/Dockerfile` (`npm ci`, `EXPOSE 3001`, `CMD node server.js`)         |
+| Compose orchestrates frontend + backend + db       | `docker-compose.yml` (three services)                                        |
+| PostgreSQL container                               | `db` service using `postgres:16-alpine`                                      |
+| Env vars via `.env` file                           | `env_file: .env` + `environment:` + `${VAR}` substitution                    |
+| Volume for the database                            | named volume `db-data` mounted at `/var/lib/postgresql/data`                 |
+| Internal comms via service names                   | backend connects to `db:5432`; all on `dvapp-net`                            |
+| Custom bridge network                              | `networks: dvapp-net: driver: bridge`                                        |
+| Secrets kept out of source                         | `.env` is git-ignored; only `.env.example` is committed                      |
+| `docker compose up --build` runs the app           | Verified end-to-end (DB schema auto-loaded via `db/init.sql`)               |
+
+---
+
+## 🛠️ Troubleshooting
+
+- **Port already in use** — change `FRONTEND_PORT` / `BACKEND_PORT` in `.env`.
+- **Frontend can't reach backend** — `REACT_APP_API_URL` is baked at *build* time;
+  after changing it run `docker compose up --build` (not just `up`).
+- **DB changes not taking effect** — `db/init.sql` only runs when the volume is
+  empty. Run `docker compose down -v` to re-initialize from scratch.
+- **Added countries show `N/A` / `0` details** — the public REST Countries
+  `v3.1` API used by the original app was **deprecated upstream** (it now returns
+  a deprecation notice instead of country data). The backend handles this
+  gracefully: a destination is still saved and the app keeps working end-to-end,
+  just with placeholder details. To restore rich data, point
+  `COUNTRIES_API_BASE_URL` in `.env` at a working country API.
+
+---
+
+## 🧰 Technologies
+
+- **Frontend**: React (Create React App), served by **nginx**
+- **Backend**: Node.js + Express
+- **Database**: PostgreSQL 16
+- **External API**: REST Countries API
+- **Containerization**: Docker, Docker Compose
