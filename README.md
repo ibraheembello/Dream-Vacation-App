@@ -10,6 +10,15 @@ reproducible containers and start with a single command.
 
 ---
 
+## 📸 Screenshot
+
+The app running via `docker compose up --build` — React frontend (served by
+nginx) reading from the Express backend and PostgreSQL:
+
+![Dream Vacation App running in Docker containers](docs/screenshot.png)
+
+---
+
 ## 🧱 Architecture
 
 ```
