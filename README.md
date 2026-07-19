@@ -336,6 +336,74 @@ Published images appear under the repo's **Packages** section on GitHub.
 
 ---
 
+## ☁️ AWS Deployment (Stage 6)
+
+The app is deployed to an **AWS EC2** instance, and the CI/CD pipeline's final
+stage rolls out every push to `main` automatically over SSH.
+
+### Infrastructure (custom VPC)
+
+| Resource | Name | Detail |
+|---|---|---|
+| VPC | `dream-vpc` | `10.0.0.0/16` |
+| Subnet | `dream-subnet` | `10.0.1.0/24` (public, auto-assign IP) |
+| Internet Gateway | `dream-igw` | attached to `dream-vpc` |
+| Route Table | `dream-rt` | `0.0.0.0/0 → dream-igw` |
+| Security Group | `dream-sg` | inbound `22` (SSH), `80` (HTTP) |
+| EC2 | `dream-ec2` | Ubuntu 22.04, `t2.micro`, Docker via user-data |
+| Elastic IP | `dream-eip` | stable public address for the deploy target |
+
+```
+Internet ──► Elastic IP ──► EC2 (t2.micro, dream-subnet)
+                                └── docker-compose.prod.yml
+                                     ├── frontend (nginx :80)  ── proxies /api ──►┐
+                                     ├── backend  (:3001, internal)  ◄────────────┘
+                                     └── db (postgres, named volume)
+```
+
+The browser hits **`http://<EC2_PUBLIC_IP>/`**; nginx serves the React bundle and
+proxies `/api/*` to the backend container over the internal Docker network — so
+the backend port is never exposed publicly.
+
+### The deploy pipeline — `.github/workflows/deploy.yml`
+
+On every push to `main`:
+
+1. **`build-and-push`** — builds the backend and frontend images and pushes them
+   to GHCR tagged `:latest` and `:sha-<commit>`.
+2. **`deploy`** (`needs: build-and-push`) — SSHes into the EC2 instance using the
+   `EC2_SSH_KEY` secret, copies `docker-compose.prod.yml`, `deploy/remote-deploy.sh`
+   and `db/`, then runs the rollout: log in to GHCR, `docker compose pull`,
+   `docker compose up -d`. Finally it **smoke-tests** `http://<host>/` for HTTP 200.
+
+`docker-compose.prod.yml` **pulls** the prebuilt images instead of building them —
+essential on a 1 GB `t2.micro`, which can't compile the React bundle.
+
+### Required GitHub Secrets
+
+| Secret | Purpose |
+|---|---|
+| `EC2_HOST` | EC2 Elastic IP (SSH + smoke-test target) |
+| `EC2_SSH_KEY` | private key for the `dream-ec2-key` pair |
+| `POSTGRES_PASSWORD` | DB password written into the on-box `.env` |
+| `GITHUB_TOKEN` | *(built-in)* — GHCR auth for pulling images on the box |
+
+### Deliverables
+
+**VPC & subnet**
+![dream-vpc and dream-subnet in the AWS console](docs/aws-vpc.png)
+
+**EC2 instance running**
+![dream-ec2 t2.micro running](docs/aws-ec2.png)
+
+**App live in the browser** (`http://<EC2_PUBLIC_IP>/`)
+![Dream Vacation App served from EC2](docs/app-browser.png)
+
+**CI/CD deployment logs** (successful SSH rollout)
+![Successful deploy pipeline run](docs/deploy-logs.png)
+
+---
+
 ## 🧰 Technologies
 
 - **Frontend**: React (Create React App), served by **nginx**
@@ -344,3 +412,4 @@ Published images appear under the repo's **Packages** section on GitHub.
 - **External API**: REST Countries API
 - **Containerization**: Docker, Docker Compose
 - **CI/CD**: GitHub Actions → GitHub Container Registry (GHCR)
+- **Cloud / Deployment**: AWS (custom VPC, EC2 `t2.micro`, Elastic IP)

@@ -1,0 +1,75 @@
+# ============================================================================
+# Dream Vacation App — PRODUCTION orchestration (EC2 deployment)
+#
+# Unlike docker-compose.yml (which BUILDS images locally), this file PULLS the
+# prebuilt images published to GHCR by the CI/CD pipeline. This keeps the tiny
+# t2.micro from having to compile the React bundle (which would exhaust its RAM).
+#
+# Deployed by the GitHub Actions "deploy" job:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# IMAGE_TAG defaults to "latest"; the pipeline pins it to the commit SHA.
+# ============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: dvapp-db
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - dvapp-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  backend:
+    image: ghcr.io/ibraheembello/dream-vacation-app-backend:${IMAGE_TAG:-latest}
+    container_name: dvapp-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      PORT: ${BACKEND_PORT}
+      COUNTRIES_API_BASE_URL: ${COUNTRIES_API_BASE_URL}
+    expose:
+      # Internal only — reached by nginx via the Docker network, not published.
+      - "${BACKEND_PORT}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - dvapp-net
+
+  frontend:
+    image: ghcr.io/ibraheembello/dream-vacation-app-frontend:${IMAGE_TAG:-latest}
+    container_name: dvapp-frontend
+    restart: unless-stopped
+    ports:
+      # The app is served on port 80 -> reachable at http://<EC2_PUBLIC_IP>/
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - dvapp-net
+
+networks:
+  dvapp-net:
+    driver: bridge
+
+volumes:
+  db-data:
+    driver: local

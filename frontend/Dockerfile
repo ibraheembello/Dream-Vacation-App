@@ -19,7 +19,9 @@ COPY package*.json ./
 RUN npm ci
 
 # CRA bakes REACT_APP_* variables in at BUILD time -> pass it as a build arg.
-ARG REACT_APP_API_URL=http://localhost:3001
+# Default empty => the app uses relative "/api" paths, which nginx proxies to the
+# backend. Override only if you want the frontend to call an absolute backend URL.
+ARG REACT_APP_API_URL=
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
 
 # Build the optimized production bundle into /app/build.

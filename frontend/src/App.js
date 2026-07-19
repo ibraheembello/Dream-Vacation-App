@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+// Empty default => calls go to a relative "/api/..." path on the same origin,
+// which nginx proxies to the backend. This keeps the app host-agnostic (works on
+// localhost and on the EC2 public IP) with no per-environment rebuild.
+const API_URL = process.env.REACT_APP_API_URL || '';
 
 function App() {
   const [destinations, setDestinations] = useState([]);
