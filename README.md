@@ -402,6 +402,25 @@ essential on a 1 GB `t2.micro`, which can't compile the React bundle.
 **CI/CD deployment logs** (successful SSH rollout)
 ![Successful deploy pipeline run](docs/deploy-logs.png)
 
+Real output from the `Deploy to EC2 over SSH` job:
+
+```text
+Login Succeeded
+>> Pulling images (IMAGE_TAG=sha-a05bcef...) ...
+>> Starting stack ...
+ Container dvapp-db        Healthy
+ Container dvapp-backend   Started
+ Container dvapp-frontend  Started
+>> Deployed. Current state:
+NAME             IMAGE                                                        STATUS
+dvapp-backend    .../dream-vacation-app-backend:sha-a05bcef...   Up (3001/tcp, internal)
+dvapp-db         postgres:16-alpine                              Up (healthy)
+dvapp-frontend   .../dream-vacation-app-frontend:sha-a05bcef...  Up (0.0.0.0:80->80/tcp)
+Waiting for the app to answer on http://<host>/ ...
+  attempt 1 -> HTTP 200
+App is live ✅
+```
+
 ---
 
 ## 🧰 Technologies
