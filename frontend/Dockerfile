@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 ###############################################################################
-# Dream Vacation App — Frontend (React, served by nginx)
+# Dream Vacation App: Frontend (React, served by nginx)
 # Multi-stage build:
 #   Stage 1 (build)      -> compile the React app to static files
 #   Stage 2 (production) -> copy ONLY the static build into a tiny nginx image

@@ -1,5 +1,5 @@
 # ============================================================================
-# Dream Vacation App — PRODUCTION orchestration (EC2 deployment)
+# Dream Vacation App: PRODUCTION orchestration (EC2 deployment)
 #
 # Unlike docker-compose.yml (which BUILDS images locally), this file PULLS the
 # prebuilt images published to GHCR by the CI/CD pipeline. This keeps the tiny
@@ -46,7 +46,7 @@ services:
       PORT: ${BACKEND_PORT}
       COUNTRIES_API_BASE_URL: ${COUNTRIES_API_BASE_URL}
     expose:
-      # Internal only — reached by nginx via the Docker network, not published.
+      # Internal only, reached by nginx via the Docker network, not published.
       - "${BACKEND_PORT}"
     depends_on:
       db:
